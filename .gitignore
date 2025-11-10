@@ -1,0 +1,20 @@
+# Nix
+result
+result-*
+
+# Docker
+Dockerfile
+.env
+
+# Data
+data/
+*.pdf
+*.docx
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+

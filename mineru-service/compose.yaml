@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # vLLM inference server
+  vllm-server:
+    image: mineru-vllm:latest
+    container_name: mineru-vllm-server
+    profiles: ["vllm-server"]
+    ports:
+      - "${VLLM_PORT:-30000}:30000"
+    volumes:
+      - ${MINERU_DATA_DIR:-./data}:/data
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    shm_size: 32gb
+    ipc: host
+    command: >
+      bash -c "
+      python -m vllm.entrypoints.openai.api_server 
+      --model Qwen/Qwen2-VL-2B-Instruct 
+      --port 30000 
+      --host 0.0.0.0 
+      --max-model-len 4096 
+      --served-model-name qwen2-vl
+      "
+    restart: unless-stopped
+
+  # Web API service
+  api:
+    image: mineru-vllm:latest
+    container_name: mineru-api
+    profiles: ["api"]
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ${MINERU_DATA_DIR:-./data}:/data
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    shm_size: 32gb
+    ipc: host
+    command: >
+      bash -c "
+      mineru-api --port 8000 --host 0.0.0.0
+      "
+    restart: unless-stopped
+
+  # Gradio WebUI service
+  gradio:
+    image: mineru-vllm:latest
+    container_name: mineru-gradio
+    profiles: ["gradio"]
+    ports:
+      - "${GRADIO_PORT:-7860}:7860"
+    volumes:
+      - ${MINERU_DATA_DIR:-./data}:/data
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    shm_size: 32gb
+    ipc: host
+    environment:
+      - GRADIO_SERVER_NAME=0.0.0.0
+      - GRADIO_SERVER_PORT=7860
+    command: >
+      bash -c "
+      mineru-gradio --port 7860 --host 0.0.0.0
+      "
+    restart: unless-stopped
+
