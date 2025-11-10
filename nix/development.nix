@@ -30,6 +30,9 @@
         git
         jq
         htop
+        
+        # MinerU deploy command
+        config.packages.mineru-deploy
       ];
 
       shellHook = ''

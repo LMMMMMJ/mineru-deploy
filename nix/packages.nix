@@ -16,7 +16,16 @@
         BLUE='\033[0;34m'
         NC='\033[0m' # No Color
         
-        PROJECT_DIR="${inputs.self}"
+        # Find project directory (where flake.nix is located)
+        PROJECT_DIR="$(pwd)"
+        while [ ! -f "$PROJECT_DIR/flake.nix" ] && [ "$PROJECT_DIR" != "/" ]; do
+          PROJECT_DIR="$(dirname "$PROJECT_DIR")"
+        done
+        
+        if [ ! -f "$PROJECT_DIR/flake.nix" ]; then
+          echo -e "''${RED}错误: 找不到 flake.nix，请在项目目录中运行此命令''${NC}"
+          exit 1
+        fi
         
         case "''${1:-help}" in
           build)
@@ -26,6 +35,45 @@
             ${pkgs.docker}/bin/docker build -t mineru-vllm:latest -f Dockerfile .
             rm -f Dockerfile
             echo -e "''${GREEN}✓ Image built successfully!''${NC}"
+            ;;
+            
+          process)
+            # 处理单个 PDF 文件
+            if [ -z "''${2}" ]; then
+              echo -e "''${RED}错误: 请指定输入 PDF 文件''${NC}"
+              echo -e "用法: mineru-deploy process <input.pdf> [output_dir]"
+              exit 1
+            fi
+            
+            INPUT_FILE="$(realpath ''${2})"
+            OUTPUT_DIR_REL="''${3:-./mineru_output}"
+            mkdir -p "$OUTPUT_DIR_REL"
+            OUTPUT_DIR="$(realpath $OUTPUT_DIR_REL)"
+            
+            if [ ! -f "$INPUT_FILE" ]; then
+              echo -e "''${RED}错误: 文件不存在: $INPUT_FILE''${NC}"
+              exit 1
+            fi
+            INPUT_DIR=$(dirname "$INPUT_FILE")
+            INPUT_NAME=$(basename "$INPUT_FILE")
+            
+            echo -e "''${BLUE}📄 处理文件: $INPUT_NAME''${NC}"
+            echo -e "''${BLUE}📁 输出目录: $OUTPUT_DIR''${NC}"
+            
+            # 使用 NixOS 正确的 GPU 参数
+            ${pkgs.docker}/bin/docker run --rm \
+              --device=nvidia.com/gpu=all \
+              -v "$INPUT_DIR:/input:ro" \
+              -v "$OUTPUT_DIR:/output" \
+              mineru-vllm:latest \
+              mineru -p "/input/$INPUT_NAME" -o /output
+            
+            # 修复文件权限
+            echo -e "''${YELLOW}🔧 修复文件权限...''${NC}"
+            sudo chown -R $(id -u):$(id -g) "$OUTPUT_DIR" 2>/dev/null || true
+            
+            echo -e "''${GREEN}✓ 处理完成!''${NC}"
+            echo -e "''${GREEN}📂 输出位置: $OUTPUT_DIR''${NC}"
             ;;
             
           start)
@@ -76,19 +124,22 @@
             echo "Usage: mineru-deploy <command> [options]"
             echo ""
             echo -e "''${GREEN}Commands:''${NC}"
-            echo "  build              - Build the MinerU Docker image"
-            echo "  start [profile]    - Start services (vllm-server|api|gradio, or all if not specified)"
-            echo "  stop               - Stop all services"
-            echo "  status             - Show service status"
-            echo "  logs [service]     - Show service logs (optionally for specific service)"
-            echo "  restart [service]  - Restart services"
+            echo "  build                      - Build the MinerU Docker image"
+            echo "  process <pdf> [output_dir] - Process a PDF file (GPU accelerated)"
+            echo "  start [profile]            - Start services (vllm-server|api|gradio)"
+            echo "  stop                       - Stop all services"
+            echo "  status                     - Show service status"
+            echo "  logs [service]             - Show service logs"
+            echo "  restart [service]          - Restart services"
             echo ""
             echo -e "''${YELLOW}Examples:''${NC}"
             echo "  mineru-deploy build"
+            echo "  mineru-deploy process document.pdf ./output"
             echo "  mineru-deploy start vllm-server"
-            echo "  mineru-deploy start"
             echo "  mineru-deploy logs"
             echo "  mineru-deploy stop"
+            echo ""
+            echo -e "''${BLUE}Note:''${NC} GPU access uses --device=nvidia.com/gpu=all (NixOS)"
             ;;
         esac
       '';
