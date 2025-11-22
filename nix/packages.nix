@@ -96,7 +96,10 @@
           stop)
             echo -e "''${BLUE}🛑 Stopping MinerU services...''${NC}"
             cd "$PROJECT_DIR/mineru-service"
-            ${pkgs.docker-compose}/bin/docker-compose down
+            # Stop all profiles
+            ${pkgs.docker-compose}/bin/docker-compose --profile vllm-server --profile api --profile gradio down
+            # Also force remove any running MinerU containers
+            ${pkgs.docker}/bin/docker ps -a --filter "name=mineru-" -q | xargs -r ${pkgs.docker}/bin/docker rm -f 2>/dev/null || true
             echo -e "''${GREEN}✓ Services stopped!''${NC}"
             ;;
             
