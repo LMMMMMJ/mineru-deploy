@@ -70,3 +70,8 @@ services:
       "
     restart: unless-stopped
 
+# Persistent volumes for models
+volumes:
+  mineru-models:
+    driver: local
+
