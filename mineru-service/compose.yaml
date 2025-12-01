@@ -38,8 +38,22 @@ services:
     # NixOS compatible GPU configuration
     devices:
       - nvidia.com/gpu=all
-    shm_size: 32gb
+    shm_size: 32gb  # Reduced from 32gb for resource limit
     ipc: host
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 32G
+        reservations:
+          cpus: '2'
+          memory: 8G
+    environment:
+      # Optimize for large PDFs with limited resources
+      - OMP_NUM_THREADS=4
+      - TORCH_NUM_THREADS=4
+      - MINERU_BATCH_SIZE=2
     command: >
       bash -c "
       mineru-api --port 8000 --host 0.0.0.0
@@ -59,8 +73,17 @@ services:
     # NixOS compatible GPU configuration
     devices:
       - nvidia.com/gpu=all
-    shm_size: 32gb
+    shm_size: 16gb  # Reduced from 32gb for resource limit
     ipc: host
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 32G
+        reservations:
+          cpus: '2'
+          memory: 8G
     environment:
       - GRADIO_SERVER_NAME=0.0.0.0
       - GRADIO_SERVER_PORT=7860

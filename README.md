@@ -196,6 +196,71 @@ sudo systemctl stop mineru
 | `services.mineru.gradio.port` | port | 7860 | Gradio端口 |
 | `services.mineru.gpuSupport` | bool | true | 启用GPU支持 |
 
+## 性能优化配置
+
+### 资源限制
+
+API 和 Gradio 服务已配置资源限制（在 `compose.yaml` 中）：
+
+- **CPU**: 最多 4 核（保留 2 核）
+- **内存**: 最多 32GB（保留 8GB）
+- **共享内存**: 16GB
+
+### 环境变量优化
+
+在 `compose.yaml` 中已配置以下优化环境变量：
+
+```yaml
+environment:
+  - OMP_NUM_THREADS=4      # 限制 OpenMP 线程数
+  - TORCH_NUM_THREADS=4    # 限制 PyTorch 线程数
+  - MINERU_BATCH_SIZE=2    # MinerU 内部批大小
+```
+
+### GPU 和设备配置
+
+MinerU 会自动检测并使用 GPU。可以通过环境变量控制：
+
+```bash
+# 指定使用的 GPU 设备
+CUDA_VISIBLE_DEVICES=0 mineru-api --port 8000
+
+# 多卡并行（如果有多张显卡）
+CUDA_VISIBLE_DEVICES=0,1 mineru-api --port 8000
+```
+
+### 性能监控
+
+**监控 GPU 使用**：
+```bash
+# 实时监控
+watch -n 1 nvidia-smi
+
+# 查看容器 GPU 使用
+docker exec mineru-api nvidia-smi
+
+# 查看容器资源使用
+docker stats mineru-api
+```
+
+### 处理大型 PDF 建议
+
+1. **分批处理**：将超大 PDF（100+页）拆分为多个小文件
+2. **调整资源限制**：根据实际情况修改 `compose.yaml` 中的 CPU/内存限制
+3. **监控显存**：处理时使用 `nvidia-smi` 监控，确保不超过限制
+4. **关闭不需要的服务**：只启动需要的服务以节省资源
+
+### 预期性能
+
+| PDF 大小 | 预计处理时间 |
+|---------|------------|
+| 小型 (<10页) | 3-5秒 |
+| 中型 (10-50页) | 15-30秒 |
+| 大型 (50-100页) | 1-3分钟 |
+| 超大 (100+页) | 3-10分钟 |
+
+*实际性能取决于 PDF 复杂度（图片、表格、公式数量）*
+
 ## 数据持久化
 
 默认情况下，MinerU数据存储在 `/var/lib/mineru`，模型缓存存储在 `~/.cache/huggingface`。
@@ -214,16 +279,42 @@ volumes:
 检查NVIDIA驱动和Docker GPU支持：
 ```bash
 nvidia-smi
-docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
+docker run --rm --device=nvidia.com/gpu=all mineru-vllm:latest nvidia-smi
 ```
+
+**注意**：在 NixOS 上必须使用 `--device=nvidia.com/gpu=all` 而不是 `--gpus all`
 
 ### 端口冲突
 修改 `compose.yaml` 或 NixOS 配置中的端口设置。
 
-### 显存不足
-- 减少 `max-model-len` 参数
-- 使用更小的模型
-- 确保没有其他GPU进程占用显存
+### 模型文件缺失
+如果遇到 "No such file or directory" 错误（如 MFD 模型）：
+
+```bash
+# 在运行的容器中重新下载模型
+docker exec -it mineru-api mineru-models-download -s huggingface -m all
+
+# 或重启服务
+mineru-deploy stop
+mineru-deploy start api
+```
+
+### 显存不足 (OOM)
+1. **监控显存**：使用 `nvidia-smi` 查看实时使用情况
+2. **减少并发**：一次只处理一个文件
+3. **分批处理**：将大型 PDF 拆分为多个小文件
+4. **调整资源限制**：在 `compose.yaml` 中降低 `shm_size`
+
+### 处理速度慢
+1. **检查 GPU 利用率**：`nvidia-smi` 应该显示 >50% 使用率
+2. **检查资源限制**：确保没有 CPU/内存瓶颈
+3. **使用命令行模式**：`mineru-deploy process` 可能比 API 更快
+4. **关闭不需要的服务**：只启动必需的服务
+
+### 大型 PDF 超时
+1. **增加超时时间**：修改 API 调用的超时设置
+2. **分批处理**：将大型 PDF（100+页）拆分为多个文件
+3. **使用命令行**：直接使用 `mineru` 命令而不是通过 API
 
 ## 参考链接
 
